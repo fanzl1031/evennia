@@ -77,3 +77,7 @@ Webserver.md
 Web-API.md
 Web-Bootstrap-Framework.md
 ```
+
+## Global Scripts
+
+- [Global Scripts](GlobalScripts.md) - management container for scripts
