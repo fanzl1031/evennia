@@ -1,77 +1,78 @@
-# MonitorHandler
+# MonitorHandler – Reacting to model & Attribute changes
 
+`MONITOR_HANDLER` from `evennia.scripts.monitorhandler` lets you attach callbacks that trigger **only when a specific DB field or Attribute value actually *changes***.  Use it to keep caches in sync, fire achievements, emit notifications, or enforce invariants—without polling.
 
-The *MonitorHandler* is a system for watching changes in properties or Attributes on objects. A
-monitor can be thought of as a sort of trigger that responds to change.
+## 1. Quick anatomy
+A monitor is defined by:
+* **obj** – the object or Attribute instance to watch.
+* **fieldname** – either a model field (`db_key`, `db_location_id`, …) *or* an Attribute key.
+* **idstring** – optional unique label so you can set multiple monitors on the same field.
+* **callback** – callable `func(obj, fieldname, **kwargs)` executed post-save if value changed.
+* **persistent** – if `True`, survives shutdowns (restored on reboot); otherwise survives reloads only.
 
-The main use for the MonitorHandler is to report changes to the client; for example the client
-Session may ask Evennia to monitor the value of the Character's `health` attribute and report
-whenever it changes. This way the client could for example update its health bar graphic as needed.
-
-## Using the MonitorHandler
-
-The MontorHandler is accessed from the singleton `evennia.MONITOR_HANDLER`. The code for the handler
-is in `evennia.scripts.monitorhandler`.
-
-Here's how to add a new monitor: 
-
+## 2. Field monitor example
 ```python
 from evennia import MONITOR_HANDLER
 
-MONITOR_HANDLER.add(obj, fieldname, callback,
-                    idstring="", persistent=False, **kwargs)
+# 1. Define the reaction
 
+def on_room_rename(obj, fieldname, **kwargs):
+    old_name = kwargs.get("old")
+    new_name = obj.key
+    obj.msg_contents(f"|gThe room name changes from {old_name} to {new_name}.|n")
+
+# 2. Attach monitor (e.g. in a Command after rename)
+old = caller.location.key
+MONITOR_HANDLER.add(
+    obj=caller.location,
+    fieldname="db_key",
+    idstring="room_rename_broadcast",
+    callback=on_room_rename,
+    persistent=False,
+    old=old,  # extra kwargs forwarded to callback
+)
 ```
+Whenever the room's `key` field is saved to a different value, everyone in the room sees the message.
 
- - `obj` ([Typeclassed](./Typeclasses.md) entity) - the object to monitor. Since this must be
-typeclassed, it means you can't monitor changes on [Sessions](./Sessions.md) with the monitorhandler, for
-example.
- - `fieldname` (str) - the name of a field or [Attribute](./Attributes.md) on `obj`. If you want to
-monitor a database field you must specify its full name, including the starting `db_` (like
-`db_key`, `db_location` etc). Any names not starting with `db_` are instead assumed to be the names
-of Attributes. This difference matters, since the MonitorHandler will automatically know to watch
-the `db_value` field of the Attribute.
- - `callback`(callable) - This will be called as `callback(fieldname=fieldname, obj=obj, **kwargs)`
-when the field updates.
- - `idstring` (str) - this is used to separate multiple monitors on the same object and fieldname.
-This is required in order to properly identify and remove the monitor later. It's also used for
-saving it.
- - `persistent` (bool) - if True, the monitor will survive a server reboot.
-
-Example: 
-
+## 3. Attribute monitor example
 ```python
-from evennia import MONITOR_HANDLER as monitorhandler
+from evennia import MONITOR_HANDLER
 
-def _monitor_callback(fieldname="", obj=None, **kwargs):    
-    # reporting callback that works both
-    # for db-fields and Attributes
-    if fieldname.startswith("db_"):
-        new_value = getattr(obj, fieldname)
-    else: # an attribute    
-        new_value = obj.attributes.get(fieldname)
-    obj.msg(f"{obj.key}.{fieldname} changed to '{new_value}'.")
+# Suppose every Character has an Attribute `hp`.
 
-# (we could add _some_other_monitor_callback here too)
+def low_hp_warning(obj, fieldname, **kwargs):
+    if obj.db.hp < 10:
+        obj.msg("|rYour health is critically low!|n")
 
-# monitor Attribute (assume we have obj from before)
-monitorhandler.add(obj, "desc", _monitor_callback)  
-
-# monitor same db-field with two different callbacks (must separate by id_string)
-monitorhandler.add(obj, "db_key", _monitor_callback, id_string="foo")  
-monitorhandler.add(obj, "db_key", _some_other_monitor_callback, id_string="bar")
-
+MONITOR_HANDLER.add(
+    obj=caller,
+    fieldname="hp",        # Attribute name (no db_ prefix)
+    category=None,          # set if Attribute categories used
+    callback=low_hp_warning,
+    idstring="warn_low_hp",
+    persistent=True,
+)
 ```
 
-A monitor is uniquely identified by the combination of the *object instance* it is monitoring, the
-*name* of the field/attribute to monitor on that object and its `idstring` (`obj` + `fieldname` +
-`idstring`). The `idstring` will be the empty string unless given explicitly.
+## 4. Listing & removing monitors
+```python
+# list all on an object
+tasks = MONITOR_HANDLER.all(caller)
 
-So to "un-monitor" the above you need to supply enough information for the system to uniquely find
-the monitor to remove:
+# remove a specific one
+MONITOR_HANDLER.remove(caller, "hp", idstring="warn_low_hp")
 
+# clear every monitor everywhere (rare!)
+MONITOR_HANDLER.clear()
 ```
-monitorhandler.remove(obj, "desc")
-monitorhandler.remove(obj, "db_key", idstring="foo")
-monitorhandler.remove(obj, "db_key", idstring="bar")
-```
+
+## 5. Persistence rules
+Monitors with `persistent=True` survive *cold* restarts; non-persistent ones survive only soft reloads.  Sessions passed in `kwargs` are checked—if the session disappeared between restarts, its monitor is silently dropped.
+
+## 6. Tips & gotchas
+* **Do not** mutate the database inside the callback in a way that would immediately trigger the same monitor again—this could create recursion.
+* For Attribute categories, pass `category="mycat"` when adding/removing.
+* Callbacks must be *pickleable* (stand-alone or `@staticmethod`) so Evennia can serialize them.
+
+## 7. Reference
+See full API docs: [`evennia.scripts.monitorhandler`](evennia.scripts.monitorhandler).
