@@ -19,6 +19,7 @@ This is the manual of [Evennia](https://www.evennia.com), the open source Python
 - [The Beginner Tutorial](Howtos/Beginner-Tutorial/Beginner-Tutorial-Overview.md) - learn the basics and build a small game (in progress)
 - [Tutorials and Howto's](Howtos/Howtos-Overview.md#how-tos) - mixed tutorials and help articles to learn Evennia
 - [Coding with Evennia](Coding/Coding-Overview.md) - resources and hints for coding and development
+- [Evennia API Quick-Start](./Evennia-API-Quickstart.md) - hands-on cheatsheet & examples
 
 ## The Evennia Library
 
@@ -69,6 +70,7 @@ Links
 :hidden:
 
 Evennia-API
+Evennia-API-Quickstart
 Licensing
 Unimplemented
 
